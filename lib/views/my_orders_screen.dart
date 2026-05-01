@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/service_order.dart';
-import '../services/order_service.dart';
+import '../controllers/order_controller.dart';
 import 'order_detail_screen.dart';
 
 class MyOrdersScreen extends StatefulWidget {
@@ -12,139 +12,118 @@ class MyOrdersScreen extends StatefulWidget {
 
 class _MyOrdersScreenState extends State<MyOrdersScreen>
     with SingleTickerProviderStateMixin {
-  final OrderService _orderService = OrderService();
+  final OrderListController _listController = OrderListController();
   late TabController _tabController;
-
-  List<ServiceOrder> _allOrders = [];
-  bool _isLoading = true;
-  String? _error;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadOrders();
+    _listController.fetchOrders();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _listController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadOrders() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-    try {
-      final orders = await _orderService.fetchMyOrders();
-      if (mounted) {
-        setState(() {
-          _allOrders = orders;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   List<ServiceOrder> _filterByStatus(List<String> statuses) {
-    return _allOrders.where((o) => statuses.contains(o.status)).toList();
+    return _listController.orders.where((o) => statuses.contains(o.status)).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final agendados = _filterByStatus(['pending', 'accepted', 'in_progress']);
-    final finalizados = _filterByStatus(['completed', 'cancelled']);
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Row(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.black),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+        child: ListenableBuilder(
+          listenable: _listController,
+          builder: (context, _) {
+            final agendados = _filterByStatus(['pending', 'accepted', 'in_progress']);
+            final finalizados = _filterByStatus(['completed', 'cancelled']);
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Colors.black),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Text(
+                        'Meus Serviços',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  const Text(
-                    'Meus Serviços',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Tabs
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Tabs
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                indicatorSize: TabBarIndicatorSize.tab,
-                dividerColor: Colors.transparent,
-                indicator: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.black87,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-                tabs: [
-                  Tab(text: 'Todos (${_allOrders.length})'),
-                  Tab(text: 'Agendados (${agendados.length})'),
-                  Tab(text: 'Finalizados (${finalizados.length})'),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Body
-            Expanded(
-              child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: Colors.black),
-                    )
-                  : _error != null
-                  ? _buildErrorState()
-                  : TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildOrderList(_allOrders),
-                        _buildOrderList(agendados),
-                        _buildOrderList(finalizados),
-                      ],
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    indicator: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-            ),
-          ],
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.black87,
+                    labelStyle: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    tabs: [
+                      Tab(text: 'Todos (${_listController.orders.length})'),
+                      Tab(text: 'Agendados (${agendados.length})'),
+                      Tab(text: 'Finalizados (${finalizados.length})'),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Body
+                Expanded(
+                  child: _listController.isLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(color: Colors.black),
+                        )
+                      : _listController.errorMessage != null
+                      ? _buildErrorState()
+                      : TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _buildOrderList(_listController.orders),
+                            _buildOrderList(agendados),
+                            _buildOrderList(finalizados),
+                          ],
+                        ),
+                ),
+              ],
+            );
+          }
         ),
       ),
     );
@@ -165,7 +144,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
             ),
             const SizedBox(height: 24),
             OutlinedButton.icon(
-              onPressed: _loadOrders,
+              onPressed: _listController.fetchOrders,
               icon: const Icon(Icons.refresh, color: Colors.black),
               label: const Text(
                 'Tentar Novamente',
@@ -207,7 +186,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
 
     return RefreshIndicator(
       color: Colors.black,
-      onRefresh: _loadOrders,
+      onRefresh: _listController.fetchOrders,
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         itemCount: orders.length,
@@ -221,7 +200,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
                 ),
               );
               // Recarrega ao voltar (caso tenha cancelado)
-              _loadOrders();
+              _listController.fetchOrders();
             },
           );
         },

@@ -1,0 +1,170 @@
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import '../controllers/home_controller.dart';
+import 'widgets/home_drawer.dart';
+import 'widgets/action_bottom_sheet.dart';
+import 'service_flow_screen.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final MapController _mapController = MapController();
+  final HomeController _homeController = HomeController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocation();
+  }
+
+  Future<void> _loadLocation() async {
+    await _homeController.loadDeviceLocation();
+    if (mounted) {
+      if (_homeController.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_homeController.errorMessage!)),
+        );
+      } else {
+        _mapController.move(_homeController.currentPosition, 16.0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _homeController.dispose();
+    super.dispose();
+  }
+
+  void _solicitarServico() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const ServiceFlowScreen()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final metadata = user?.userMetadata ?? {};
+
+    String addressText = 'Nenhum endereço informado';
+    if (metadata['address'] is Map) {
+      final addr = metadata['address'];
+      addressText = '${addr['logradouro']}, ${addr['numero']}';
+      if (addr['complemento']?.isNotEmpty ?? false) {
+        addressText += ' - ${addr['complemento']}';
+      }
+      addressText +=
+          '\n${addr['bairro']}, ${addr['cidade']} - ${addr['estado']}\nCEP: ${addr['cep']}';
+    } else if (metadata['address'] is String) {
+      addressText = metadata['address'];
+    }
+
+    final name = metadata['name'] as String? ?? 'Sem Nome';
+    final email = user?.email ?? 'N/A';
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: Builder(
+          builder: (context) => Container(
+            margin: const EdgeInsets.all(8.0),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.menu, color: Colors.black),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
+        ),
+      ),
+      drawer: HomeDrawer(name: name, email: email, addressText: addressText),
+      body: ListenableBuilder(
+        listenable: _homeController,
+        builder: (context, _) {
+          return Stack(
+            children: [
+              // 1. Camada de Fundo: O Mapa
+              FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _homeController.currentPosition,
+                  initialZoom: 15.0,
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.iclean',
+                  ),
+                  // Marcador indicando a posição do usuário
+                  if (!_homeController.isLoadingLocation)
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: _homeController.currentPosition,
+                          width: 60,
+                          height: 60,
+                          child: const Icon(
+                            Icons.person_pin_circle,
+                            size: 50,
+                            color: Colors.blueAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+
+              // Feedback visual se estiver carregando a localização do GPS
+              if (_homeController.isLoadingLocation)
+                const Positioned(
+                  top: 100,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('Buscando GPS do aparelho...'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // 2. Camada Inferior: Painel de Ação (Bottom Sheet Fixo) extraído para componente
+              ActionBottomSheet(onAction: _solicitarServico),
+            ],
+          );
+        }
+      ),
+    );
+  }
+}

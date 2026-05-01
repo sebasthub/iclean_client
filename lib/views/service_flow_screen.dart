@@ -1,11 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../widgets/premium_button.dart';
-import '../widgets/selection_card.dart';
-import '../models/service_order.dart';
-import '../services/order_service.dart';
+import '../controllers/order_controller.dart';
+import 'widgets/premium_button.dart';
+import 'widgets/selection_card.dart';
 
 class ServiceFlowScreen extends StatefulWidget {
   const ServiceFlowScreen({super.key});
@@ -16,39 +14,27 @@ class ServiceFlowScreen extends StatefulWidget {
 
 class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
   final PageController _pageController = PageController();
-  final OrderService _orderService = OrderService();
-  int _currentPage = 0;
-  final int _totalPages = 5;
-
-  // Respostas do formulário
-  String? _urgencyType; // 'agendar' ou 'agora'
-  DateTime? _scheduledDate;
-  TimeOfDay? _scheduledTime;
-  String? _cleaningType; // 'padrao', 'pesada', 'pos_obra'
-  int _bedrooms = 1;
-  int _bathrooms = 1;
-  File? _securityVideo; // Vídeo opcional de segurança
-  bool _isLoading = false;
+  final OrderWizardController _wizardController = OrderWizardController();
 
   void _nextPage() {
-    if (_currentPage == 0) {
-      if (_urgencyType == null) {
+    if (_wizardController.currentPage == 0) {
+      if (_wizardController.urgencyType == null) {
         _showError('Selecione uma opção de urgência.');
         return;
       }
-      if (_urgencyType == 'agendar' &&
-          (_scheduledDate == null || _scheduledTime == null)) {
+      if (_wizardController.urgencyType == 'agendar' &&
+          (_wizardController.scheduledDate == null || _wizardController.scheduledTime == null)) {
         _showError('Por favor, selecione a data e o horário do agendamento.');
         return;
       }
     }
-    if (_currentPage == 1 && _cleaningType == null) {
+    if (_wizardController.currentPage == 1 && _wizardController.cleaningType == null) {
       _showError('Selecione o tipo de limpeza.');
       return;
     }
 
     // Finalização
-    if (_currentPage == 4) {
+    if (_wizardController.currentPage == 4) {
       _finishFlow();
       return;
     }
@@ -60,7 +46,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
   }
 
   void _previousPage() {
-    if (_currentPage == 0) {
+    if (_wizardController.currentPage == 0) {
       Navigator.of(context).pop();
     } else {
       _pageController.previousPage(
@@ -76,58 +62,10 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
     );
   }
 
-  double _calculateTotal() {
-    double basePrice = 100.0;
-    if (_cleaningType == 'pesada') basePrice = 180.0;
-    if (_cleaningType == 'pos_obra') basePrice = 300.0;
-
-    double sizeMultiplier = (_bedrooms * 20.0) + (_bathrooms * 30.0);
-    double total = basePrice + sizeMultiplier;
-    if (_urgencyType == 'agora') total += 50.0;
-    return total;
-  }
-
   Future<void> _finishFlow() async {
-    setState(() => _isLoading = true);
+    final error = await _wizardController.finishFlow();
 
-    try {
-      final userId = Supabase.instance.client.auth.currentUser!.id;
-
-      // Monta a data agendada combinando data + hora
-      DateTime? scheduledDateTime;
-      if (_urgencyType == 'agendar' &&
-          _scheduledDate != null &&
-          _scheduledTime != null) {
-        scheduledDateTime = DateTime(
-          _scheduledDate!.year,
-          _scheduledDate!.month,
-          _scheduledDate!.day,
-          _scheduledTime!.hour,
-          _scheduledTime!.minute,
-        );
-      }
-
-      String? uploadedVideoUrl;
-      if (_securityVideo != null) {
-        uploadedVideoUrl = await _orderService.uploadOrderVideo(
-          _securityVideo!,
-          userId,
-        );
-      }
-
-      final order = ServiceOrder(
-        userId: userId,
-        urgencyType: _urgencyType!,
-        scheduledDate: scheduledDateTime,
-        cleaningType: _cleaningType!,
-        bedrooms: _bedrooms,
-        bathrooms: _bathrooms,
-        estimatedPrice: _calculateTotal(),
-        videoUrl: uploadedVideoUrl,
-      );
-
-      await _orderService.createOrder(order);
-
+    if (error == null) {
       if (!mounted) return;
 
       showDialog(
@@ -163,16 +101,14 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
           ],
         ),
       );
-    } catch (e) {
+    } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao salvar pedido: $e'),
+          content: Text('Erro ao salvar pedido: $error'),
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -181,68 +117,71 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header e Botão de Voltar
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.black),
-                      onPressed: _previousPage,
-                    ),
+        child: ListenableBuilder(
+          listenable: _wizardController,
+          builder: (context, _) {
+            return Column(
+              children: [
+                // Header e Botão de Voltar
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Colors.black),
+                          onPressed: _previousPage,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: LinearProgressIndicator(
+                          value: (_wizardController.currentPage + 1) / _wizardController.totalPages,
+                          backgroundColor: Colors.grey[200],
+                          color: Colors.black,
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(width: 32),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: LinearProgressIndicator(
-                      value: (_currentPage + 1) / _totalPages,
-                      backgroundColor: Colors.grey[200],
-                      color: Colors.black,
-                      minHeight: 8,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                ),
+
+                // Corpo do Wizard
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    onPageChanged: (index) {
+                      _wizardController.setPage(index);
+                    },
+                    children: [
+                      _buildStep1(),
+                      _buildStep2(),
+                      _buildStep3(),
+                      _buildStep4(),
+                      _buildStep5(),
+                    ],
                   ),
-                  const SizedBox(width: 32),
-                ],
-              ),
-            ),
+                ),
 
-            // Corpo do Wizard
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentPage = index;
-                  });
-                },
-                children: [
-                  _buildStep1(),
-                  _buildStep2(),
-                  _buildStep3(),
-                  _buildStep4(),
-                  _buildStep5(),
-                ],
-              ),
-            ),
-
-            // Rodapé com botão de Continuar
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: PremiumButton(
-                text: _currentPage == 4 ? 'Confirmar Pedido' : 'Continuar',
-                isLoading: _isLoading,
-                onPressed: _nextPage,
-              ),
-            ),
-          ],
+                // Rodapé com botão de Continuar
+                Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: PremiumButton(
+                    text: _wizardController.currentPage == 4 ? 'Confirmar Pedido' : 'Continuar',
+                    isLoading: _wizardController.isLoading,
+                    onPressed: _nextPage,
+                  ),
+                ),
+              ],
+            );
+          }
         ),
       ),
     );
@@ -276,12 +215,12 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
             title: 'Agendar',
             subtitle: 'Marque para outro dia. É mais econômico.',
             icon: Icons.calendar_month,
-            isSelected: _urgencyType == 'agendar',
-            onTap: () => setState(() => _urgencyType = 'agendar'),
+            isSelected: _wizardController.urgencyType == 'agendar',
+            onTap: () => _wizardController.setUrgencyType('agendar'),
           ),
 
           // Campos de Data/Hora se "Agendar" for selecionado
-          if (_urgencyType == 'agendar')
+          if (_wizardController.urgencyType == 'agendar')
             Padding(
               padding: const EdgeInsets.only(top: 16.0),
               child: Row(
@@ -310,7 +249,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
                           },
                         );
                         if (date != null) {
-                          setState(() => _scheduledDate = date);
+                          _wizardController.setScheduledDate(date);
                         }
                       },
                       child: Container(
@@ -324,9 +263,9 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
                             const Icon(Icons.event, color: Colors.black87),
                             const SizedBox(width: 8),
                             Text(
-                              _scheduledDate == null
+                              _wizardController.scheduledDate == null
                                   ? 'Escolher Data'
-                                  : '${_scheduledDate!.day.toString().padLeft(2, '0')}/${_scheduledDate!.month.toString().padLeft(2, '0')}/${_scheduledDate!.year}',
+                                  : '${_wizardController.scheduledDate!.day.toString().padLeft(2, '0')}/${_wizardController.scheduledDate!.month.toString().padLeft(2, '0')}/${_wizardController.scheduledDate!.year}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                               ),
@@ -355,7 +294,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
                           },
                         );
                         if (time != null) {
-                          setState(() => _scheduledTime = time);
+                          _wizardController.setScheduledTime(time);
                         }
                       },
                       child: Container(
@@ -372,9 +311,9 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              _scheduledTime == null
+                              _wizardController.scheduledTime == null
                                   ? 'Horário'
-                                  : _scheduledTime!.format(context),
+                                  : _wizardController.scheduledTime!.format(context),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                               ),
@@ -393,12 +332,8 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
             title: 'Preciso Agora',
             subtitle: 'Enviaremos alguém imediatamente. Possui taxa adicional.',
             icon: Icons.flash_on,
-            isSelected: _urgencyType == 'agora',
-            onTap: () => setState(() {
-              _urgencyType = 'agora';
-              _scheduledDate = null;
-              _scheduledTime = null;
-            }),
+            isSelected: _wizardController.urgencyType == 'agora',
+            onTap: () => _wizardController.setUrgencyType('agora'),
           ),
         ],
       ),
@@ -434,8 +369,8 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
             subtitle:
                 'Ideal para a manutenção do dia a dia. Inclui varrer, passar pano e tirar pó.',
             icon: Icons.cleaning_services,
-            isSelected: _cleaningType == 'padrao',
-            onTap: () => setState(() => _cleaningType = 'padrao'),
+            isSelected: _wizardController.cleaningType == 'padrao',
+            onTap: () => _wizardController.setCleaningType('padrao'),
           ),
           const SizedBox(height: 16),
           SelectionCard(
@@ -443,8 +378,8 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
             subtitle:
                 'Foco em sujeiras difíceis, gordura e detalhes minuciosos.',
             icon: Icons.wash,
-            isSelected: _cleaningType == 'pesada',
-            onTap: () => setState(() => _cleaningType = 'pesada'),
+            isSelected: _wizardController.cleaningType == 'pesada',
+            onTap: () => _wizardController.setCleaningType('pesada'),
           ),
           const SizedBox(height: 16),
           SelectionCard(
@@ -452,8 +387,8 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
             subtitle:
                 'Remoção de poeira de gesso, respingos de tinta e resíduos de construção.',
             icon: Icons.handyman,
-            isSelected: _cleaningType == 'pos_obra',
-            onTap: () => setState(() => _cleaningType = 'pos_obra'),
+            isSelected: _wizardController.cleaningType == 'pos_obra',
+            onTap: () => _wizardController.setCleaningType('pos_obra'),
           ),
         ],
       ),
@@ -488,11 +423,9 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
           _buildCounterRow(
             title: 'Quartos',
             icon: Icons.bed,
-            value: _bedrooms,
-            onIncrement: () => setState(() => _bedrooms++),
-            onDecrement: () => setState(() {
-              if (_bedrooms > 0) _bedrooms--;
-            }),
+            value: _wizardController.bedrooms,
+            onIncrement: _wizardController.incrementBedrooms,
+            onDecrement: _wizardController.decrementBedrooms,
           ),
 
           const Padding(
@@ -504,11 +437,9 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
           _buildCounterRow(
             title: 'Banheiros',
             icon: Icons.bathtub,
-            value: _bathrooms,
-            onIncrement: () => setState(() => _bathrooms++),
-            onDecrement: () => setState(() {
-              if (_bathrooms > 0) _bathrooms--;
-            }),
+            value: _wizardController.bathrooms,
+            onIncrement: _wizardController.incrementBathrooms,
+            onDecrement: _wizardController.decrementBathrooms,
           ),
         ],
       ),
@@ -612,7 +543,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
             ),
           ),
           const SizedBox(height: 40),
-          if (_securityVideo != null) ...[
+          if (_wizardController.securityVideo != null) ...[
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -635,7 +566,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () => setState(() => _securityVideo = null),
+                    onPressed: () => _wizardController.setSecurityVideo(null),
                   ),
                 ],
               ),
@@ -672,9 +603,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
       );
 
       if (video != null) {
-        setState(() {
-          _securityVideo = File(video.path);
-        });
+        _wizardController.setSecurityVideo(File(video.path));
       }
     } catch (e) {
       _showError('Erro ao selecionar o vídeo: $e');
@@ -683,7 +612,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
 
   // PASSO 5: Resumo e Valor Fictício
   Widget _buildStep5() {
-    final total = _calculateTotal();
+    final total = _wizardController.calculateTotal();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -718,25 +647,25 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
               children: [
                 _buildSummaryLine(
                   'Urgência',
-                  _urgencyType == 'agora'
+                  _wizardController.urgencyType == 'agora'
                       ? 'Imediato (+ Taxa)'
-                      : (_scheduledDate != null && _scheduledTime != null)
-                      ? '${_scheduledDate!.day.toString().padLeft(2, '0')}/${_scheduledDate!.month.toString().padLeft(2, '0')} às ${_scheduledTime!.format(context)}'
+                      : (_wizardController.scheduledDate != null && _wizardController.scheduledTime != null)
+                      ? '${_wizardController.scheduledDate!.day.toString().padLeft(2, '0')}/${_wizardController.scheduledDate!.month.toString().padLeft(2, '0')} às ${_wizardController.scheduledTime!.format(context)}'
                       : 'Agendado',
                 ),
                 const Divider(height: 24),
                 _buildSummaryLine(
                   'Limpeza',
-                  _cleaningType == 'padrao'
+                  _wizardController.cleaningType == 'padrao'
                       ? 'Padrão'
-                      : _cleaningType == 'pesada'
+                      : _wizardController.cleaningType == 'pesada'
                       ? 'Pesada'
                       : 'Pós-Obra',
                 ),
                 const Divider(height: 24),
                 _buildSummaryLine(
                   'Tamanho',
-                  '$_bedrooms Quartos, $_bathrooms Banh.',
+                  '${_wizardController.bedrooms} Quartos, ${_wizardController.bathrooms} Banh.',
                 ),
                 const Divider(height: 32, color: Colors.black26),
                 Row(

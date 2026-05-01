@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import '../controllers/auth_controller.dart';
 import 'home_screen.dart';
-import '../widgets/premium_text_field.dart';
-import '../widgets/premium_button.dart';
+import 'widgets/premium_text_field.dart';
+import 'widgets/premium_button.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,70 +12,19 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final AuthController _authController = AuthController();
   int _currentStep = 0;
-  bool _isLoading = false;
-  bool _isFetchingCep = false;
-
-  // Step 1 Controllers (Account)
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-
-  // Step 2 Controllers (Address)
-  final _cepController = TextEditingController();
-  final _logradouroController = TextEditingController();
-  final _numeroController = TextEditingController();
-  final _complementoController = TextEditingController();
-  final _bairroController = TextEditingController();
-  final _cidadeController = TextEditingController();
-  final _estadoController = TextEditingController();
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _cepController.dispose();
-    _logradouroController.dispose();
-    _numeroController.dispose();
-    _complementoController.dispose();
-    _bairroController.dispose();
-    _cidadeController.dispose();
-    _estadoController.dispose();
+    _authController.disposeControllers();
     super.dispose();
   }
 
   Future<void> _buscarCep(String cep) async {
-    final cepApenasNumeros = cep.replaceAll(RegExp(r'[^0-9]'), '');
-    if (cepApenasNumeros.length != 8) return;
-
-    setState(() {
-      _isFetchingCep = true;
-    });
-
-    try {
-      final response = await http.get(
-        Uri.parse('https://viacep.com.br/ws/$cepApenasNumeros/json/'),
-      );
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['erro'] == null) {
-          setState(() {
-            _logradouroController.text = data['logradouro'] ?? '';
-            _bairroController.text = data['bairro'] ?? '';
-            _cidadeController.text = data['localidade'] ?? '';
-            _estadoController.text = data['uf'] ?? '';
-          });
-        } else {
-          _showSnackBar('CEP não encontrado.', isError: true);
-        }
-      }
-    } catch (e) {
-      _showSnackBar('Erro ao buscar o CEP.', isError: true);
-    } finally {
-      setState(() {
-        _isFetchingCep = false;
-      });
+    final error = await _authController.fetchCep(cep);
+    if (error != null) {
+      _showSnackBar(error, isError: true);
     }
   }
 
@@ -93,44 +40,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _register() async {
-    if (_nameController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty ||
-        _passwordController.text.isEmpty ||
-        _cepController.text.trim().isEmpty ||
-        _logradouroController.text.trim().isEmpty ||
-        _numeroController.text.trim().isEmpty ||
-        _bairroController.text.trim().isEmpty ||
-        _cidadeController.text.trim().isEmpty ||
-        _estadoController.text.trim().isEmpty) {
-      _showSnackBar(
-        'Por favor, preencha todos os campos obrigatórios.',
-        isError: true,
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      await Supabase.instance.client.auth.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        data: {
-          'name': _nameController.text.trim(),
-          'address': {
-            'cep': _cepController.text.trim(),
-            'logradouro': _logradouroController.text.trim(),
-            'numero': _numeroController.text.trim(),
-            'complemento': _complementoController.text.trim(),
-            'bairro': _bairroController.text.trim(),
-            'cidade': _cidadeController.text.trim(),
-            'estado': _estadoController.text.trim(),
-          },
-        },
-      );
-
+    final error = await _authController.register();
+    if (error == null) {
       _showSnackBar('Cadastro realizado com sucesso!');
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -138,16 +49,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           (route) => false,
         );
       }
-    } on AuthException catch (e) {
-      _showSnackBar(e.message, isError: true);
-    } catch (e) {
-      _showSnackBar('Erro inesperado ocorreu', isError: true);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+    } else {
+      _showSnackBar(error, isError: true);
     }
   }
 
@@ -193,16 +96,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 data: Theme.of(context).copyWith(
                   colorScheme: const ColorScheme.light(primary: Colors.black),
                 ),
-                child: Stepper(
+                child: ListenableBuilder(
+                  listenable: _authController,
+                  builder: (context, _) {
+                    return Stepper(
                   type: StepperType.vertical,
                   currentStep: _currentStep,
                   elevation: 0,
                   physics: const ClampingScrollPhysics(),
                   onStepContinue: () {
                     if (_currentStep == 0) {
-                      if (_nameController.text.trim().isEmpty ||
-                          _emailController.text.trim().isEmpty ||
-                          _passwordController.text.isEmpty) {
+                      if (_authController.registerNameController.text.trim().isEmpty ||
+                          _authController.registerEmailController.text.trim().isEmpty ||
+                          _authController.registerPasswordController.text.isEmpty) {
                         _showSnackBar(
                           'Preencha os dados da conta antes de continuar.',
                           isError: true,
@@ -234,14 +140,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           Expanded(
                             child: PremiumButton(
                               text: isLastStep ? 'Concluir' : 'Continuar',
-                              isLoading: _isLoading,
+                              isLoading: _authController.isLoading,
                               onPressed: details.onStepContinue,
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: TextButton(
-                              onPressed: _isLoading
+                              onPressed: _authController.isLoading
                                   ? null
                                   : details.onStepCancel,
                               style: TextButton.styleFrom(
@@ -279,19 +185,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         children: [
                           const SizedBox(height: 16),
                           PremiumTextField(
-                            controller: _nameController,
+                            controller: _authController.registerNameController,
                             label: 'Nome Completo',
                             textCapitalization: TextCapitalization.words,
                           ),
                           const SizedBox(height: 16),
                           PremiumTextField(
-                            controller: _emailController,
+                            controller: _authController.registerEmailController,
                             label: 'Email',
                             keyboardType: TextInputType.emailAddress,
                           ),
                           const SizedBox(height: 16),
                           PremiumTextField(
-                            controller: _passwordController,
+                            controller: _authController.registerPasswordController,
                             label: 'Senha',
                             obscureText: true,
                           ),
@@ -319,7 +225,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               Expanded(
                                 flex: 2,
                                 child: PremiumTextField(
-                                  controller: _cepController,
+                                  controller: _authController.registerCepController,
                                   label: 'CEP',
                                   keyboardType: TextInputType.number,
                                   onChanged: (val) {
@@ -334,7 +240,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 flex: 1,
                                 child: SizedBox(
                                   height: 56,
-                                  child: _isFetchingCep
+                                  child: _authController.isFetchingCep
                                       ? const Center(
                                           child: CircularProgressIndicator(
                                             color: Colors.black,
@@ -347,7 +253,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 16),
                           PremiumTextField(
-                            controller: _logradouroController,
+                            controller: _authController.registerLogradouroController,
                             label: 'Logradouro (Rua/Av)',
                             textCapitalization: TextCapitalization.words,
                           ),
@@ -357,7 +263,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               Expanded(
                                 flex: 1,
                                 child: PremiumTextField(
-                                  controller: _numeroController,
+                                  controller: _authController.registerNumeroController,
                                   label: 'Número',
                                   keyboardType: TextInputType.number,
                                 ),
@@ -366,7 +272,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               Expanded(
                                 flex: 2,
                                 child: PremiumTextField(
-                                  controller: _complementoController,
+                                  controller: _authController.registerComplementoController,
                                   label: 'Complemento (Opcional)',
                                   textCapitalization:
                                       TextCapitalization.sentences,
@@ -376,7 +282,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 16),
                           PremiumTextField(
-                            controller: _bairroController,
+                            controller: _authController.registerBairroController,
                             label: 'Bairro',
                             textCapitalization: TextCapitalization.words,
                           ),
@@ -386,7 +292,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               Expanded(
                                 flex: 2,
                                 child: PremiumTextField(
-                                  controller: _cidadeController,
+                                  controller: _authController.registerCidadeController,
                                   label: 'Cidade',
                                   textCapitalization: TextCapitalization.words,
                                 ),
@@ -395,7 +301,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               Expanded(
                                 flex: 1,
                                 child: PremiumTextField(
-                                  controller: _estadoController,
+                                  controller: _authController.registerEstadoController,
                                   label: 'UF',
                                   textCapitalization:
                                       TextCapitalization.characters,
@@ -409,11 +315,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       isActive: _currentStep >= 1,
                     ),
                   ],
-                ),
-              ),
+                );
+              }
             ),
-          ],
+          ),
         ),
+        ],
+      ),
       ),
     );
   }

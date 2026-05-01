@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/service_order.dart';
-import '../services/order_service.dart';
+import '../controllers/order_controller.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final ServiceOrder order;
@@ -12,14 +12,18 @@ class OrderDetailScreen extends StatefulWidget {
 }
 
 class _OrderDetailScreenState extends State<OrderDetailScreen> {
-  final OrderService _orderService = OrderService();
-  bool _isCancelling = false;
-  late ServiceOrder _order;
+  late final OrderDetailController _detailController;
 
   @override
   void initState() {
     super.initState();
-    _order = widget.order;
+    _detailController = OrderDetailController(widget.order);
+  }
+
+  @override
+  void dispose() {
+    _detailController.dispose();
+    super.dispose();
   }
 
   Future<void> _cancelOrder() async {
@@ -49,54 +53,40 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    setState(() => _isCancelling = true);
-    try {
-      await _orderService.cancelOrder(_order.id!);
-      if (!mounted) return;
-      // Atualiza o estado local
-      setState(() {
-        _order = ServiceOrder(
-          id: _order.id,
-          userId: _order.userId,
-          urgencyType: _order.urgencyType,
-          scheduledDate: _order.scheduledDate,
-          cleaningType: _order.cleaningType,
-          bedrooms: _order.bedrooms,
-          bathrooms: _order.bathrooms,
-          estimatedPrice: _order.estimatedPrice,
-          status: 'cancelled',
-          createdAt: _order.createdAt,
-        );
-      });
+    final error = await _detailController.cancelOrder();
+    
+    if (!mounted) return;
+    
+    if (error == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Pedido cancelado com sucesso.'),
           backgroundColor: Colors.green,
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao cancelar: $e'),
+          content: Text(error),
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      if (mounted) setState(() => _isCancelling = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final canCancel = _order.status == 'pending' || _order.status == 'accepted';
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header
+        child: ListenableBuilder(
+          listenable: _detailController,
+          builder: (context, _) {
+            final order = _detailController.order;
+            final canCancel = order.status == 'pending' || order.status == 'accepted';
+            return Column(
+              children: [
+                // Header
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
@@ -137,7 +127,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: _statusColor(
-                            _order.status,
+                            order.status,
                           ).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(30),
                         ),
@@ -145,17 +135,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              _statusIcon(_order.status),
-                              color: _statusColor(_order.status),
+                              _statusIcon(order.status),
+                              color: _statusColor(order.status),
                               size: 20,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              _statusLabel(_order.status),
+                              _statusLabel(order.status),
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: _statusColor(_order.status),
+                                color: _statusColor(order.status),
                               ),
                             ),
                           ],
@@ -170,31 +160,31 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       _buildRow(
                         Icons.cleaning_services,
                         'Tipo',
-                        _cleaningLabel(_order.cleaningType),
+                        _cleaningLabel(order.cleaningType),
                       ),
                       _buildRow(
-                        _order.urgencyType == 'agora'
+                        order.urgencyType == 'agora'
                             ? Icons.flash_on
                             : Icons.calendar_month,
                         'Urgência',
-                        _order.urgencyType == 'agora' ? 'Imediato' : 'Agendado',
+                        order.urgencyType == 'agora' ? 'Imediato' : 'Agendado',
                       ),
-                      if (_order.scheduledDate != null)
+                      if (order.scheduledDate != null)
                         _buildRow(
                           Icons.event,
                           'Data',
-                          _formatDate(_order.scheduledDate!),
+                          _formatDate(order.scheduledDate!),
                         ),
                     ]),
 
                     const SizedBox(height: 16),
 
                     _buildSection('Imóvel', [
-                      _buildRow(Icons.bed, 'Quartos', '${_order.bedrooms}'),
+                      _buildRow(Icons.bed, 'Quartos', '${order.bedrooms}'),
                       _buildRow(
                         Icons.bathtub,
                         'Banheiros',
-                        '${_order.bathrooms}',
+                        '${order.bathrooms}',
                       ),
                     ]),
 
@@ -218,7 +208,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             ),
                           ),
                           Text(
-                            'R\$ ${_order.estimatedPrice.toStringAsFixed(2)}',
+                            'R\$ ${order.estimatedPrice.toStringAsFixed(2)}',
                             style: const TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -229,11 +219,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       ),
                     ),
 
-                    if (_order.createdAt != null) ...[
+                    if (order.createdAt != null) ...[
                       const SizedBox(height: 24),
                       Center(
                         child: Text(
-                          'Criado em ${_formatDate(_order.createdAt!)}',
+                          'Criado em ${_formatDate(order.createdAt!)}',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey.shade500,
@@ -255,7 +245,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isCancelling ? null : _cancelOrder,
+                    onPressed: _detailController.isCancelling ? null : _cancelOrder,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 18),
                       backgroundColor: Colors.red,
@@ -265,7 +255,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       ),
                       elevation: 0,
                     ),
-                    child: _isCancelling
+                    child: _detailController.isCancelling
                         ? const SizedBox(
                             height: 24,
                             width: 24,
@@ -284,8 +274,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   ),
                 ),
               ),
-          ],
-        ),
+            ],
+          );
+        }
+      ),
       ),
     );
   }
