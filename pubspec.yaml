@@ -1,0 +1,29 @@
+name: iclean_client
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_dotenv: ^6.0.1
+  flutter_map: ^8.3.0
+  geolocator: ^14.0.2
+  http: ^1.6.0
+  image_picker: ^1.2.1
+  latlong2: ^0.9.1
+  supabase_flutter: ^2.12.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - .env
