@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/cep_service.dart';
+import '../services/address_service.dart';
+import '../models/user_address.dart';
 
 class AuthController extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -94,16 +96,26 @@ class AuthController extends ChangeNotifier {
         email: registerEmailController.text.trim(),
         password: registerPasswordController.text,
         name: registerNameController.text.trim(),
-        addressData: {
-          'cep': registerCepController.text.trim(),
-          'logradouro': registerLogradouroController.text.trim(),
-          'numero': registerNumeroController.text.trim(),
-          'complemento': registerComplementoController.text.trim(),
-          'bairro': registerBairroController.text.trim(),
-          'cidade': registerCidadeController.text.trim(),
-          'estado': registerEstadoController.text.trim(),
-        },
       );
+
+      final user = _authService.currentUser;
+      if (user != null) {
+        final addressService = AddressService();
+        await addressService.createAddress(
+          UserAddress(
+            userId: user.id,
+            label: 'Casa', // Padrão
+            cep: registerCepController.text.trim(),
+            logradouro: registerLogradouroController.text.trim(),
+            numero: registerNumeroController.text.trim(),
+            complemento: registerComplementoController.text.trim(),
+            bairro: registerBairroController.text.trim(),
+            cidade: registerCidadeController.text.trim(),
+            estado: registerEstadoController.text.trim(),
+            isDefault: true,
+          ),
+        );
+      }
       return null; // Sucesso
     } catch (e) {
       return e.toString();

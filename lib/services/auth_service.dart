@@ -16,14 +16,12 @@ class AuthService {
     required String email,
     required String password,
     required String name,
-    required Map<String, dynamic> addressData,
   }) async {
     await _client.auth.signUp(
       email: email,
       password: password,
       data: {
         'name': name,
-        'address': addressData,
       },
     );
   }

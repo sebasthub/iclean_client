@@ -105,8 +105,9 @@ class OrderWizardController extends ChangeNotifier {
 
   int _currentPage = 0;
   int get currentPage => _currentPage;
-  final int totalPages = 5;
+  final int totalPages = 6; // +1 page for address selection
 
+  String? selectedAddressId;
   String? urgencyType; // 'agendar' ou 'agora'
   DateTime? scheduledDate;
   TimeOfDay? scheduledTime;
@@ -123,6 +124,11 @@ class OrderWizardController extends ChangeNotifier {
 
   void setPage(int page) {
     _currentPage = page;
+    notifyListeners();
+  }
+
+  void setAddressId(String addressId) {
+    selectedAddressId = addressId;
     notifyListeners();
   }
 
@@ -211,6 +217,7 @@ class OrderWizardController extends ChangeNotifier {
 
       final order = ServiceOrder(
         userId: userId,
+        addressId: selectedAddressId,
         urgencyType: urgencyType!,
         scheduledDate: scheduledDateTime,
         cleaningType: cleaningType!,

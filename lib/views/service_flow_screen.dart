@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../controllers/order_controller.dart';
+import '../controllers/address_controller.dart';
+import 'address_form_screen.dart';
 import 'widgets/premium_button.dart';
 import 'widgets/selection_card.dart';
 
@@ -15,9 +17,36 @@ class ServiceFlowScreen extends StatefulWidget {
 class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
   final PageController _pageController = PageController();
   final OrderWizardController _wizardController = OrderWizardController();
+  final AddressController _addressController = AddressController();
+
+  @override
+  void initState() {
+    super.initState();
+    _addressController.fetchAddresses().then((_) {
+      if (mounted) {
+        final addresses = _addressController.addresses;
+        if (addresses.isNotEmpty) {
+          final defaultAddress = addresses.firstWhere((a) => a.isDefault, orElse: () => addresses.first);
+          _wizardController.setAddressId(defaultAddress.id!);
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _addressController.dispose();
+    super.dispose();
+  }
 
   void _nextPage() {
     if (_wizardController.currentPage == 0) {
+      if (_wizardController.selectedAddressId == null) {
+        _showError('Selecione um endereço para o serviço.');
+        return;
+      }
+    }
+    if (_wizardController.currentPage == 1) {
       if (_wizardController.urgencyType == null) {
         _showError('Selecione uma opção de urgência.');
         return;
@@ -28,13 +57,13 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
         return;
       }
     }
-    if (_wizardController.currentPage == 1 && _wizardController.cleaningType == null) {
+    if (_wizardController.currentPage == 2 && _wizardController.cleaningType == null) {
       _showError('Selecione o tipo de limpeza.');
       return;
     }
 
     // Finalização
-    if (_wizardController.currentPage == 4) {
+    if (_wizardController.currentPage == 5) {
       _finishFlow();
       return;
     }
@@ -161,6 +190,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
                       _wizardController.setPage(index);
                     },
                     children: [
+                      _buildStep0(),
                       _buildStep1(),
                       _buildStep2(),
                       _buildStep3(),
@@ -174,7 +204,7 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
                 Padding(
                   padding: const EdgeInsets.all(24.0),
                   child: PremiumButton(
-                    text: _wizardController.currentPage == 4 ? 'Confirmar Pedido' : 'Continuar',
+                    text: _wizardController.currentPage == 5 ? 'Confirmar Pedido' : 'Continuar',
                     isLoading: _wizardController.isLoading,
                     onPressed: _nextPage,
                   ),
@@ -184,6 +214,81 @@ class _ServiceFlowScreenState extends State<ServiceFlowScreen> {
           }
         ),
       ),
+    );
+  }
+
+  // PASSO 0: Seleção de Endereço
+  Widget _buildStep0() {
+    return ListenableBuilder(
+      listenable: _addressController,
+      builder: (context, _) {
+        if (_addressController.isLoading) {
+          return const Center(child: CircularProgressIndicator(color: Colors.black));
+        }
+        
+        final addresses = _addressController.addresses;
+        
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 24),
+              const Text(
+                'Onde será a\nfaxina?',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  height: 1.2,
+                  letterSpacing: -1,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Selecione um endereço para o serviço.',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 40),
+              
+              if (addresses.isEmpty)
+                const Center(
+                  child: Text('Nenhum endereço encontrado.'),
+                )
+              else
+                ...addresses.map((addr) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
+                    child: SelectionCard(
+                      title: addr.label,
+                      subtitle: addr.shortAddress,
+                      icon: addr.label.toLowerCase() == 'casa' ? Icons.home : Icons.location_on,
+                      isSelected: _wizardController.selectedAddressId == addr.id,
+                      onTap: () => _wizardController.setAddressId(addr.id!),
+                    ),
+                  );
+                }),
+                
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => AddressFormScreen(addressController: _addressController),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.add, color: Colors.black),
+                label: const Text('Adicionar Novo Endereço', style: TextStyle(color: Colors.black)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  side: const BorderSide(color: Colors.black12),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
     );
   }
 

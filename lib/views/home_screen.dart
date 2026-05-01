@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_map/flutter_map.dart';
 import '../controllers/home_controller.dart';
+import '../controllers/address_controller.dart';
 import 'widgets/home_drawer.dart';
 import 'widgets/action_bottom_sheet.dart';
 import 'service_flow_screen.dart';
@@ -16,11 +17,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final MapController _mapController = MapController();
   final HomeController _homeController = HomeController();
+  final AddressController _addressController = AddressController();
 
   @override
   void initState() {
     super.initState();
     _loadLocation();
+    _addressController.fetchAddresses();
   }
 
   Future<void> _loadLocation() async {
@@ -39,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _homeController.dispose();
+    _addressController.dispose();
     super.dispose();
   }
 
@@ -52,20 +56,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
     final metadata = user?.userMetadata ?? {};
-
-    String addressText = 'Nenhum endereço informado';
-    if (metadata['address'] is Map) {
-      final addr = metadata['address'];
-      addressText = '${addr['logradouro']}, ${addr['numero']}';
-      if (addr['complemento']?.isNotEmpty ?? false) {
-        addressText += ' - ${addr['complemento']}';
-      }
-      addressText +=
-          '\n${addr['bairro']}, ${addr['cidade']} - ${addr['estado']}\nCEP: ${addr['cep']}';
-    } else if (metadata['address'] is String) {
-      addressText = metadata['address'];
-    }
-
     final name = metadata['name'] as String? ?? 'Sem Nome';
     final email = user?.email ?? 'N/A';
 
@@ -95,7 +85,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      drawer: HomeDrawer(name: name, email: email, addressText: addressText),
+      drawer: ListenableBuilder(
+        listenable: _addressController,
+        builder: (context, _) {
+          String addressText = 'Nenhum endereço informado';
+          if (!_addressController.isLoading && _addressController.addresses.isNotEmpty) {
+            final defaultAddress = _addressController.addresses.firstWhere(
+              (a) => a.isDefault,
+              orElse: () => _addressController.addresses.first,
+            );
+            addressText = defaultAddress.shortAddress;
+          }
+          return HomeDrawer(name: name, email: email, addressText: addressText);
+        }
+      ),
       body: ListenableBuilder(
         listenable: _homeController,
         builder: (context, _) {

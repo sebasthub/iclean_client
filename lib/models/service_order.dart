@@ -1,6 +1,7 @@
 class ServiceOrder {
   final String? id;
   final String userId;
+  final String? addressId;
   final String urgencyType;
   final DateTime? scheduledDate;
   final String cleaningType;
@@ -14,6 +15,7 @@ class ServiceOrder {
   ServiceOrder({
     this.id,
     required this.userId,
+    this.addressId,
     required this.urgencyType,
     this.scheduledDate,
     required this.cleaningType,
@@ -29,6 +31,7 @@ class ServiceOrder {
   Map<String, dynamic> toMap() {
     return {
       'user_id': userId,
+      'address_id': addressId,
       'urgency_type': urgencyType,
       'scheduled_date': scheduledDate?.toIso8601String(),
       'cleaning_type': cleaningType,
@@ -45,6 +48,7 @@ class ServiceOrder {
     return ServiceOrder(
       id: map['id'] as String?,
       userId: map['user_id'] as String,
+      addressId: map['address_id'] as String?,
       urgencyType: map['urgency_type'] as String,
       scheduledDate: map['scheduled_date'] != null
           ? DateTime.parse(map['scheduled_date'] as String)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../login_screen.dart';
 import '../my_orders_screen.dart';
+import '../addresses_screen.dart';
 
 class HomeDrawer extends StatelessWidget {
   final String name;
@@ -39,6 +40,16 @@ class HomeDrawer extends StatelessWidget {
             subtitle: Text(addressText),
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.location_on),
+            title: const Text('Meus Endereços'),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const AddressesScreen()),
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.history),
             title: const Text('Meus Serviços'),
